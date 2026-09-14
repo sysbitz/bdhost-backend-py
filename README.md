@@ -76,28 +76,33 @@ bdhost-backend-py/
 │   └── versions/
 │       └── 0001_initial.py
 ├── shared/                     # Shared models, config, and clients (kept thin)
-│   ├── config.py               # pydantic-settings config
-│   ├── enums.py                # AppStatus, UserRole, PaymentStatus
+│   ├── config.py               # pydantic-settings config (DB, Redis, R2, Cloudflare)
+│   ├── constants.py            # Platform regex, reserved subdomains
+│   ├── enums.py                # AppStatus (PROVISIONING, ACTIVE, SUSPENDED, DELETING, DELETED, FAILED), UserRole
+│   ├── utils/                  # Path sanitization and traversal prevention
 │   ├── db/                     # Base declarative models (User, App, Plan, Payment, RefreshToken)
 │   ├── cache/                  # Redis client with typed app:{subdomain} caching
 │   └── storage/                # aioboto3 R2 client (put, get, delete, quota calc)
-├── api/                        # API service
-│   ├── main.py                 # FastAPI application
-│   ├── deps.py                 # DB session and authentication dependencies
-│   ├── core/                   # Security (Argon2, JWT) and rate limiting
-│   ├── schemas/                # Pydantic request/response schemas
-│   ├── services/               # App, file, quota, and AI placeholder services
-│   ├── routers/                # auth, apps, files, billing, account routers
-│   └── tests/                  # API test suite
-├── app_runtime/                # App runtime edge service
-│   ├── main.py                 # Tenant resolution and static file streaming
-│   ├── resolver.py             # Host header extraction & Redis/Postgres caching
-│   └── tests/                  # Tenant resolution and SPA fallback test suite
+├── src/
+│   ├── api/                    # API service (Control Plane)
+│   │   ├── main.py             # FastAPI application
+│   │   ├── deps.py             # DB session and authentication dependencies
+│   │   ├── core/               # Security (Argon2, JWT) and rate limiting
+│   │   ├── schemas/            # Pydantic request/response schemas
+│   │   ├── services/           # App, file, quota, Cloudflare DNS, and AI placeholder services
+│   │   │   └── cloudflare/     # Cloudflare client, DNS service, and typed exceptions
+│   │   ├── routers/            # auth, admin, apps, files, billing, account routers
+│   │   └── tests/              # API, Admin setup, and Cloudflare DNS test suite
+│   └── app_runtime/            # App runtime edge service (Data Plane)
+│       ├── main.py             # Tenant resolution, path security, and static file streaming
+│       ├── resolver.py         # Strict Host validation & Redis/Postgres caching
+│       └── tests/              # Tenant resolution, host validation, and traversal security test suite
 ├── worker/                     # Background worker
 │   ├── main.py                 # arq WorkerSettings and cron jobs
 │   └── tasks.py                # recalc_quota and send_email
 └── scripts/
-    ├── seed.py                 # Seeds default plans and admin user
+    ├── seed.py                 # Seeds default hosting plans (no pre-seeded admin)
+    ├── check_cloudflare.py     # Cloudflare connectivity and wildcard DNS verification CLI
     └── dev_up.sh               # Quickstart helper script
 ```
 
@@ -153,15 +158,13 @@ uv run alembic upgrade head
 
 ### 5. Seed Initial Data
 
-Seed default hosting plans (`Free`, `Pro`, `Enterprise`) and the system administrator account:
+Seed default hosting plans (`Free`, `Pro`, `Enterprise`):
 
 ```bash
 uv run python scripts/seed.py
 ```
 
-Default admin credentials:
-- **Email:** `admin@bdappshub.com`
-- **Password:** `admin123456`
+> **Note on Admin Account:** There is no hardcoded or pre-seeded admin account. The first admin is configured dynamically via the one-time setup API (`POST /auth/setup-admin`), after which the setup route permanently disables itself.
 
 ---
 
@@ -171,14 +174,14 @@ Run each service directly using the official `fastapi` CLI:
 
 ### API Service (`api`)
 ```bash
-uv run fastapi dev api/main.py --port 8000
+uv run fastapi dev src/api/main.py --port 8000
 ```
 - Interactive Swagger docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 - Health check: [http://localhost:8000/health](http://localhost:8000/health)
 
 ### App Runtime Service (`app-runtime`)
 ```bash
-uv run fastapi dev app_runtime/main.py --port 8001
+uv run fastapi dev src/app_runtime/main.py --port 8001
 ```
 - Health check: [http://localhost:8001/health](http://localhost:8001/health)
 - Tenant resolution: Send requests with a `Host` header (e.g. `curl -H "Host: my-app.bdappshub.com" http://localhost:8001/`)
@@ -192,16 +195,44 @@ uv run arq worker.main.WorkerSettings --watch worker
 
 ---
 
+## Initial Admin Setup & Panel Flow
+
+1. **Check Setup Status:**
+   - Call `GET /auth/setup-status`
+   - Returns `{"admin_setup_required": true}` if no administrator exists in the database yet.
+2. **One-Time Admin Setup:**
+   - Call `POST /auth/setup-admin` with your chosen email and password:
+     ```json
+     {
+       "email": "owner@bdappshub.com",
+       "password": "your-secure-password"
+     }
+     ```
+   - Creates the initial `ADMIN` user, sets the secure httpOnly refresh cookie, and returns access token + user details.
+   - **Single-use lock:** Any future requests to `/auth/setup-admin` are permanently blocked with `403 Forbidden` (`{"detail": "Initial admin has already been configured"}`).
+3. **Admin Panel Access:**
+   - Use the obtained Bearer token to access the protected admin panel endpoints:
+     - `GET /admin/overview`: System metrics (total users, total apps, active apps, total storage used).
+     - `GET /admin/users`: List all registered users across the platform.
+     - `GET /admin/apps`: List all deployed applications across all users.
+
+---
+
 ## API Endpoints Overview
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/health` | API service health check | No |
+| `GET` | `/auth/setup-status` | Check if initial admin setup is required | No |
+| `POST` | `/auth/setup-admin` | **One-time** first admin creation (locks after use) | No (Disabled once admin exists) |
 | `POST` | `/auth/register` | Register new user account | No (Rate limited) |
 | `POST` | `/auth/login` | Log in and receive JWT + refresh cookie | No (Rate limited) |
 | `POST` | `/auth/refresh` | Rotate refresh token and get new access token | Cookie |
 | `POST` | `/auth/logout` | Revoke refresh token and clear cookie | Cookie |
 | `GET` | `/auth/me` | Current authenticated user profile | Bearer Token |
+| `GET` | `/admin/overview` | Platform metrics & aggregate storage stats | Bearer Token (Admin only) |
+| `GET` | `/admin/users` | List all platform users | Bearer Token (Admin only) |
+| `GET` | `/admin/apps` | List all platform apps across all tenants | Bearer Token (Admin only) |
 | `GET` | `/apps` | List current user's apps | Bearer Token |
 | `POST` | `/apps` | Create a new app (subdomain reservation & quota check) | Bearer Token |
 | `GET` | `/apps/{id}` | Get single app details | Bearer Token |
@@ -233,7 +264,7 @@ uv run ruff check .
 uv run ruff format --check .
 
 # 4. Static type check
-uv run mypy shared api app_runtime worker
+uv run mypy shared src/api src/app_runtime worker
 ```
 
 ---
@@ -255,6 +286,13 @@ uv run mypy shared api app_runtime worker
 4. **Designed for Future Portability:**
    - `app-runtime` and `api` communicate exclusively via PostgreSQL, Redis, and R2 contracts.
    - Zero business logic leaks into `app-runtime`, ensuring it can be rewritten in Go for extreme concurrency without modifying the rest of the stack.
+5. **Cloudflare DNS Automation & Wildcard Setup:**
+   - **Control Plane vs Data Plane Separation:** Individual per-tenant DNS records are **never** created. Cloudflare routes all tenant subdomains to the app runtime via a single wildcard `*.bdappshub.com` A record.
+   - **PostgreSQL as Source of Truth:** PostgreSQL (accelerated by Redis) decides if a subdomain exists and which app it resolves to.
+   - **Idempotent Wildcard Provisioning:** `CloudflareDNSService.ensure_wildcard_record()` provisions `* -> APP_RUNTIME_IP` idempotently without duplicates.
+   - **Runtime Host Hardening:** The resolver validates the `Host` header against `BASE_DOMAIN`, rejects multi-level subdomains, foreign hosts, and reserved names.
+   - **Path Traversal Protection:** Static paths and `custom_index` are sanitized and normalized; keys never escape `apps/{app_id}/`.
+   - **Cloudflare Verification CLI:** Run `uv run python scripts/check_cloudflare.py` to test credentials, zone access, and wildcard record status.
 
 ---
 

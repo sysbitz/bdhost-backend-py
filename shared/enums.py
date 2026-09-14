@@ -10,7 +10,9 @@ class AppStatus(StrEnum):
     PROVISIONING = "provisioning"
     ACTIVE = "active"
     SUSPENDED = "suspended"
+    DELETING = "deleting"
     DELETED = "deleted"
+    FAILED = "failed"
 
 
 class PaymentStatus(StrEnum):

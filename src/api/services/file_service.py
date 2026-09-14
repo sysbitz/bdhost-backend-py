@@ -1,14 +1,10 @@
 import io
-import posixpath
 import uuid
 import zipfile
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas import DeployResponse, FileItemOut, FileListResponse
-from api.services.app_service import get_app
-from api.services.quota_service import verify_storage_quota
 from shared.db.models import User
 from shared.storage.r2_client import (
     ALLOWED_EXTENSIONS,
@@ -16,6 +12,10 @@ from shared.storage.r2_client import (
     get_r2_client,
     is_allowed_extension,
 )
+from shared.utils.path import sanitize_relative_path as _sanitize_path
+from src.api.schemas import DeployResponse, FileItemOut, FileListResponse
+from src.api.services.app_service import get_app
+from src.api.services.quota_service import verify_storage_quota
 
 # Zip security limits
 MAX_ZIP_FILES = 2000
@@ -24,13 +24,13 @@ MAX_ZIP_UNCOMPRESSED_BYTES = 250 * 1024 * 1024  # 250 MB
 
 def sanitize_relative_path(path_str: str) -> str:
     """Normalizes and ensures path is safe, relative, and posix-compliant without leading slashes or '..'"""
-    clean_path = posixpath.normpath(path_str.replace("\\", "/"))
-    if clean_path.startswith("/") or clean_path.startswith("../") or clean_path == "..":
+    try:
+        return _sanitize_path(path_str)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid file path: {path_str}",
+            detail=f"Invalid file path: {e}",
         )
-    return clean_path.lstrip("./")
 
 
 async def upload_single_file(

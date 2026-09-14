@@ -4,7 +4,7 @@ from typing import Any
 
 import jwt
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 from shared.config import get_settings
 
@@ -19,7 +19,7 @@ def get_password_hash(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return _ph.verify(hashed_password, plain_password)
-    except (VerifyMismatchError, Exception):
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
 
 

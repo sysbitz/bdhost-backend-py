@@ -10,10 +10,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from sqlalchemy import select  # noqa: E402
 
-from api.core.security import get_password_hash  # noqa: E402
 from shared.db.base import async_session_factory  # noqa: E402
-from shared.db.models import Plan, User  # noqa: E402
-from shared.enums import UserRole  # noqa: E402
+from shared.db.models import Plan  # noqa: E402
 
 DEFAULT_PLANS = [
     {
@@ -76,25 +74,8 @@ async def seed() -> None:
             else:
                 print(f"  = Plan already exists: {p_data['name']}")
 
-        print("\nSeeding admin user...")
-        admin_email = "admin@bdappshub.com"
-        user_res = await session.execute(select(User).where(User.email == admin_email))
-        existing_admin = user_res.scalar_one_or_none()
-
-        if not existing_admin:
-            admin_user = User(
-                email=admin_email,
-                password_hash=get_password_hash("admin123456"),
-                full_name="System Administrator",
-                role=UserRole.ADMIN,
-            )
-            session.add(admin_user)
-            print(f"  + Created admin: {admin_email} (Password: admin123456)")
-        else:
-            print(f"  = Admin user already exists: {admin_email}")
-
         await session.commit()
-        print("\nDatabase seeding completed successfully!")
+        print("\nDatabase seeding completed successfully (plans seeded)!")
 
 
 if __name__ == "__main__":

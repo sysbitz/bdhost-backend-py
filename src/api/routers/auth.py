@@ -5,15 +5,6 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.core.rate_limit import auth_limiter
-from api.core.security import (
-    create_access_token,
-    generate_refresh_token,
-    get_password_hash,
-    verify_password,
-)
-from api.deps import get_current_user, get_db
-from api.schemas import TokenResponse, UserLogin, UserOut, UserRegister
 from shared.cache.redis_client import (
     revoke_refresh_token,
     store_refresh_token,
@@ -22,8 +13,118 @@ from shared.cache.redis_client import (
 from shared.config import get_settings
 from shared.db.models import RefreshToken, User
 from shared.enums import UserRole
+from src.api.core.rate_limit import auth_limiter
+from src.api.core.security import (
+    create_access_token,
+    generate_refresh_token,
+    get_password_hash,
+    verify_password,
+)
+from src.api.deps import get_current_user, get_db
+from src.api.schemas import (
+    AdminSetupRequest,
+    AdminSetupResponse,
+    AdminSetupStatus,
+    TokenResponse,
+    UserLogin,
+    UserOut,
+    UserRegister,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.get("/setup-status", response_model=AdminSetupStatus)
+async def get_admin_setup_status(
+    db: AsyncSession = Depends(get_db),
+) -> AdminSetupStatus:
+    """Checks whether the initial admin setup has been completed."""
+    result = await db.execute(select(User.id).where(User.role == UserRole.ADMIN).limit(1))
+    admin_exists = result.scalar_one_or_none() is not None
+
+    if admin_exists:
+        return AdminSetupStatus(
+            admin_setup_required=False,
+            message="Admin account has already been initialized. Setup is locked.",
+        )
+    return AdminSetupStatus(
+        admin_setup_required=True,
+        message="No administrator exists. Initial setup required.",
+    )
+
+
+@router.post(
+    "/setup-admin",
+    response_model=AdminSetupResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(auth_limiter)],
+)
+async def setup_initial_admin(
+    data: AdminSetupRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> AdminSetupResponse:
+    """One-time initial admin setup endpoint.
+
+    Allows creating the administrator account on first boot.
+    Once an admin account exists, this endpoint is permanently locked and returns 403 Forbidden.
+    """
+    settings = get_settings()
+
+    # 1. Verify that NO admin account exists
+    admin_check = await db.execute(select(User.id).where(User.role == UserRole.ADMIN).limit(1))
+    if admin_check.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin account setup has already been completed. This endpoint is permanently disabled.",
+        )
+
+    normalized_email = data.email.strip().lower()
+
+    # 2. Verify email uniqueness
+    existing_user = await db.execute(select(User).where(User.email == normalized_email))
+    if existing_user.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email address already exists.",
+        )
+
+    # 3. Create the administrator account
+    admin_user = User(
+        email=normalized_email,
+        password_hash=get_password_hash(data.password),
+        full_name=data.full_name.strip() or "System Administrator",
+        role=UserRole.ADMIN,
+    )
+    db.add(admin_user)
+    await db.commit()
+    await db.refresh(admin_user)
+
+    # 4. Generate access token and refresh token session
+    access_token = create_access_token(subject=str(admin_user.id), role=str(admin_user.role))
+    jti = generate_refresh_token()
+    ttl_seconds = settings.refresh_token_expire_days * 86400
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+
+    db_token = RefreshToken(
+        user_id=admin_user.id,
+        jti=jti,
+        expires_at=expires_at,
+        revoked=False,
+    )
+    db.add(db_token)
+    await db.commit()
+
+    await store_refresh_token(jti=jti, user_id=str(admin_user.id), ttl_seconds=ttl_seconds)
+    _set_refresh_cookie(response, jti)
+
+    return AdminSetupResponse(
+        success=True,
+        message="Admin account created successfully. Initial setup is now locked.",
+        user=UserOut.model_validate(admin_user),
+        access_token=access_token,
+        token_type="bearer",
+    )
 
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:

@@ -19,6 +19,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "redis>=5.3.1",
     "sqlalchemy[asyncio]>=2.0.52",
+    "cloudflare>=5.7.0",
 ]
 
 [tool.uv]
@@ -49,5 +50,5 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["api/tests", "app_runtime/tests", "tests"]
-pythonpath = ["."]
+testpaths = ["src/api/tests", "src/app_runtime/tests", "tests"]
+pythonpath = [".", "src"]

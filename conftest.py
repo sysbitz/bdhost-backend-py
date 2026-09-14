@@ -6,11 +6,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.deps import get_db
-from api.main import app as api_app
-from app_runtime.main import app as runtime_app
 from shared.db.base import Base, get_db_session
 from shared.db.models import Plan
+from src.api.deps import get_db
+from src.api.main import app as api_app
+from src.app_runtime.main import app as runtime_app
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -151,19 +151,23 @@ def mock_external_services(monkeypatch):
     )
     monkeypatch.setattr("shared.cache.redis_client.revoke_refresh_token", mock_revoke_refresh_token)
 
-    monkeypatch.setattr("api.routers.auth.store_refresh_token", mock_store_refresh_token)
-    monkeypatch.setattr("api.routers.auth.verify_refresh_token_in_cache", mock_verify_refresh_token)
-    monkeypatch.setattr("api.routers.auth.revoke_refresh_token", mock_revoke_refresh_token)
-    monkeypatch.setattr("api.services.app_service.invalidate_app_cache", mock_invalidate_app_cache)
-    monkeypatch.setattr("app_runtime.resolver.get_app_cache", mock_get_app_cache)
-    monkeypatch.setattr("app_runtime.resolver.set_app_cache", mock_set_app_cache)
-    monkeypatch.setattr("app_runtime.resolver.set_app_not_found", mock_set_app_not_found)
+    monkeypatch.setattr("src.api.routers.auth.store_refresh_token", mock_store_refresh_token)
+    monkeypatch.setattr(
+        "src.api.routers.auth.verify_refresh_token_in_cache", mock_verify_refresh_token
+    )
+    monkeypatch.setattr("src.api.routers.auth.revoke_refresh_token", mock_revoke_refresh_token)
+    monkeypatch.setattr(
+        "src.api.services.app_service.invalidate_app_cache", mock_invalidate_app_cache
+    )
+    monkeypatch.setattr("src.app_runtime.resolver.get_app_cache", mock_get_app_cache)
+    monkeypatch.setattr("src.app_runtime.resolver.set_app_cache", mock_set_app_cache)
+    monkeypatch.setattr("src.app_runtime.resolver.set_app_not_found", mock_set_app_not_found)
 
     # Mock R2 Client
     mock_r2 = MockR2Client()
     monkeypatch.setattr("shared.storage.r2_client.get_r2_client", lambda: mock_r2)
-    monkeypatch.setattr("api.services.file_service.get_r2_client", lambda: mock_r2)
-    monkeypatch.setattr("app_runtime.main.get_r2_client", lambda: mock_r2)
+    monkeypatch.setattr("src.api.services.file_service.get_r2_client", lambda: mock_r2)
+    monkeypatch.setattr("src.app_runtime.main.get_r2_client", lambda: mock_r2)
 
 
 @pytest.fixture

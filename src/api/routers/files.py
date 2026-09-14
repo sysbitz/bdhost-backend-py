@@ -11,15 +11,15 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
-from api.schemas import DeployResponse, FileItemOut, FileListResponse
-from api.services.file_service import (
+from shared.db.models import User
+from src.api.deps import get_current_user, get_db
+from src.api.schemas import DeployResponse, FileItemOut, FileListResponse
+from src.api.services.file_service import (
     delete_app_file,
     deploy_zip_archive,
     list_app_files,
     upload_single_file,
 )
-from shared.db.models import User
 
 router = APIRouter(prefix="/apps/{app_id}", tags=["files"])
 

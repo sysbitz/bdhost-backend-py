@@ -1,0 +1,35 @@
+import re
+
+SUBDOMAIN_REGEX = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$")
+
+RESERVED_SUBDOMAINS: set[str] = {
+    "api",
+    "app",
+    "www",
+    "admin",
+    "cdn",
+    "mail",
+    "ftp",
+    "smtp",
+    "pop",
+    "imap",
+    "status",
+    "blog",
+    "docs",
+    "dev",
+    "stage",
+    "staging",
+    "prod",
+    "static",
+    "assets",
+    "dashboard",
+    "billing",
+    "auth",
+    "support",
+    "help",
+    "test",
+    "sysbitz",
+    "bdhost",
+    "bdapps",
+    "bdappshub",
+}

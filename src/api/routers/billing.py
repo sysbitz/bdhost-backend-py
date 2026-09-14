@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
-from api.schemas import PlanOut
-from api.services.quota_service import get_user_effective_plan
 from shared.db.models import Plan, User
+from src.api.deps import get_current_user, get_db
+from src.api.schemas import PlanOut
+from src.api.services.quota_service import get_user_effective_plan
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 

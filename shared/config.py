@@ -77,6 +77,24 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS",
     )
 
+    # Cloudflare & DNS
+    cloudflare_api_token: str = Field(
+        default="",
+        alias="CLOUDFLARE_API_TOKEN",
+    )
+    cloudflare_zone_id: str = Field(
+        default="",
+        alias="CLOUDFLARE_ZONE_ID",
+    )
+    cloudflare_account_id: str = Field(
+        default="",
+        alias="CLOUDFLARE_ACCOUNT_ID",
+    )
+    app_runtime_ip: str = Field(
+        default="127.0.0.1",
+        alias="APP_RUNTIME_IP",
+    )
+
     @property
     def cors_origins_list(self) -> list[str]:
         if self.cors_origins.strip() == "*":

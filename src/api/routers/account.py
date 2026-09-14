@@ -3,10 +3,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
-from api.schemas import UserOut
 from shared.db.models import App, User
 from shared.enums import AppStatus
+from src.api.deps import get_current_user, get_db
+from src.api.schemas import UserOut
 
 router = APIRouter(prefix="/account", tags=["account"])
 

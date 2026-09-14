@@ -3,9 +3,10 @@ import uuid
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
-from api.schemas import AppCreate, AppOut, AppUpdate
-from api.services.app_service import (
+from shared.db.models import User
+from src.api.deps import get_current_user, get_db
+from src.api.schemas import AppCreate, AppOut, AppUpdate
+from src.api.services.app_service import (
     create_app,
     delete_app,
     get_app,
@@ -13,7 +14,6 @@ from api.services.app_service import (
     to_app_out,
     update_app,
 )
-from shared.db.models import User
 
 router = APIRouter(prefix="/apps", tags=["apps"])
 

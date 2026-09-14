@@ -5,10 +5,11 @@ from fastapi import Depends, FastAPI, Header, Request, Response, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app_runtime.resolver import extract_subdomain, resolve_app
 from shared.cache.redis_client import close_redis
 from shared.db.base import get_db_session
 from shared.storage.r2_client import get_r2_client
+from shared.utils.path import sanitize_relative_path
+from src.app_runtime.resolver import extract_subdomain, resolve_app
 
 
 @asynccontextmanager
@@ -92,20 +93,61 @@ def create_runtime_app() -> FastAPI:
             )
 
         r2 = get_r2_client()
-        clean_path = path.lstrip("/")
-        custom_index = app_data.get("custom_index") or "index.html"
+        app_id = app_data["id"]
+        app_prefix = f"apps/{app_id}/"
 
-        if not clean_path or clean_path.endswith("/"):
-            key = f"apps/{app_data['id']}/{clean_path}{custom_index}"
+        # Validate custom_index
+        raw_custom_index = app_data.get("custom_index") or "index.html"
+        try:
+            custom_index = sanitize_relative_path(raw_custom_index)
+        except ValueError:
+            custom_index = "index.html"
+
+        # Determine target file relative path safely
+        if not path or path == "/" or path.strip() == "":
+            relative_file = custom_index
         else:
-            key = f"apps/{app_data['id']}/{clean_path}"
+            try:
+                ends_with_slash = path.endswith("/")
+                sanitized = sanitize_relative_path(path)
+                relative_file = f"{sanitized}/{custom_index}" if ends_with_slash else sanitized
+            except ValueError:
+                # Path traversal attempt or invalid path
+                return HTMLResponse(
+                    content="""<!DOCTYPE html>
+<html>
+<head><title>404 - File Not Found</title></head>
+<body style="font-family: sans-serif; text-align: center; padding: 50px;">
+  <h1>404 - File Not Found</h1>
+  <p>The requested file does not exist.</p>
+</body>
+</html>""",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+
+        key = f"{app_prefix}{relative_file}"
+
+        # Hard boundary enforcement: final key must never escape tenant prefix
+        if not key.startswith(app_prefix):
+            return HTMLResponse(
+                content="""<!DOCTYPE html>
+<html>
+<head><title>404 - File Not Found</title></head>
+<body style="font-family: sans-serif; text-align: center; padding: 50px;">
+  <h1>404 - File Not Found</h1>
+  <p>The requested file does not exist.</p>
+</body>
+</html>""",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
 
         obj = await r2.get_object(key)
 
         # If not found and spa_fallback is enabled, try custom_index
         if obj is None and app_data.get("spa_fallback", False):
-            fallback_key = f"apps/{app_data['id']}/{custom_index}"
-            obj = await r2.get_object(fallback_key)
+            fallback_key = f"{app_prefix}{custom_index}"
+            if fallback_key.startswith(app_prefix):
+                obj = await r2.get_object(fallback_key)
 
         if obj is None:
             return HTMLResponse(

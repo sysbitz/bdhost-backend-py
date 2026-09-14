@@ -1,51 +1,18 @@
-import re
 import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas import AppCreate, AppOut, AppUpdate
-from api.services.quota_service import check_app_limit
 from shared.cache.redis_client import invalidate_app_cache
 from shared.config import get_settings
+from shared.constants import RESERVED_SUBDOMAINS, SUBDOMAIN_REGEX
 from shared.db.models import App, User
 from shared.enums import AppStatus, UserRole
 from shared.storage.r2_client import get_r2_client
-
-SUBDOMAIN_REGEX = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$")
-
-RESERVED_SUBDOMAINS: set[str] = {
-    "api",
-    "app",
-    "www",
-    "admin",
-    "cdn",
-    "mail",
-    "ftp",
-    "smtp",
-    "pop",
-    "imap",
-    "status",
-    "blog",
-    "docs",
-    "dev",
-    "stage",
-    "staging",
-    "prod",
-    "static",
-    "assets",
-    "dashboard",
-    "billing",
-    "auth",
-    "support",
-    "help",
-    "test",
-    "sysbitz",
-    "bdhost",
-    "bdapps",
-    "bdappshub",
-}
+from shared.utils.path import sanitize_relative_path
+from src.api.schemas import AppCreate, AppOut, AppUpdate
+from src.api.services.quota_service import check_app_limit
 
 
 def validate_subdomain(subdomain: str) -> str:
@@ -149,7 +116,13 @@ async def update_app(db: AsyncSession, app_id: uuid.UUID, user: User, data: AppU
     app = await get_app(db, app_id, user)
 
     if data.custom_index is not None:
-        app.custom_index = data.custom_index.strip().lstrip("/")
+        try:
+            app.custom_index = sanitize_relative_path(data.custom_index)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid custom_index: {e}",
+            )
     if data.spa_fallback is not None:
         app.spa_fallback = data.spa_fallback
     if data.status is not None:

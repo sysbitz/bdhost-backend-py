@@ -4,10 +4,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.core.rate_limit import init_rate_limiter
-from api.routers import account, apps, auth, billing, files
 from shared.cache.redis_client import close_redis
 from shared.config import get_settings
+from src.api.core.rate_limit import init_rate_limiter
+from src.api.routers import account, admin, apps, auth, billing, files
 
 
 @asynccontextmanager
@@ -24,7 +24,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="bdhost API",
-        description="Core management API for bdhost (auth, apps, files, billing)",
+        description="Core management API for bdhost (auth, apps, files, billing, admin)",
         version="0.1.0",
         lifespan=lifespan,
     )
@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(files.router)
     app.include_router(billing.router)
     app.include_router(account.router)
+    app.include_router(admin.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict[str, str]:

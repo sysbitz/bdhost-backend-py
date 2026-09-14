@@ -6,10 +6,10 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.core.security import decode_access_token
 from shared.db.base import get_db_session
 from shared.db.models import User
 from shared.enums import UserRole
+from src.api.core.security import decode_access_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
