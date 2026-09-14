@@ -1,0 +1,53 @@
+[project]
+name = "bdhost-backend-py"
+version = "0.1.0"
+description = "bdhost backend services"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "aioboto3>=15.5.0",
+    "alembic>=1.20.0",
+    "argon2-cffi>=25.1.0",
+    "arq>=0.28.0",
+    "asyncpg>=0.31.0",
+    "email-validator>=2.3.0",
+    "fastapi[standard]>=0.141.1",
+    "fastapi-limiter>=0.1.6",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.15.0",
+    "pyjwt>=2.14.0",
+    "python-multipart>=0.0.32",
+    "redis>=5.3.1",
+    "sqlalchemy[asyncio]>=2.0.52",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.22.1",
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.7",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.14"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["api/tests", "app_runtime/tests", "tests"]
+pythonpath = ["."]
